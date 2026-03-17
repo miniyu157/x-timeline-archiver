@@ -2,7 +2,7 @@
 // @name         X (Twitter) Timeline Archiver
 // @name:zh-CN   X (Twitter) 时间线归档助手
 // @namespace    https://github.com/miniyu157/x-timeline-archiver
-// @version      2026.3.17
+// @version      2026.3.17-2
 // @description  Elegant and minimalist timeline archiver for X.
 // @description:zh-CN 极简的 X (Twitter) 时间线归档工具。
 // @author       Yumeka
@@ -13,6 +13,15 @@
 // @grant        GM_addStyle
 // @run-at       document-end
 // ==/UserScript==
+
+/*
+  X (Twitter) Timeline Archiver
+      2026.3.17-2 更新日志
+  - feat: 添加导出格式菜单 JSON(L)/CSV；
+  - feat!: 移除 lang 字段；
+  - feat!: nickname 字段由包含昵称+ID, 改为仅包含昵称；
+  - style: 代码风格变得更加紧凑。
+*/
 
 (() => {
   "use strict";
@@ -28,209 +37,126 @@
 
   const CONFIG = {
     repoUrl: "https://github.com/miniyu157/x-timeline-archiver",
-    licenseUrl: "https://github.com/miniyu157/x-timeline-archiver/blob/main/LICENSE",
+    licenseUrl: "https://github.com/miniyu157/x-timeline-archiver/blob/main/LICENSE"
   };
+
+  const State = { format: "JSON(L)" };
 
   const DOM = {
-    q: (sel, ctx = document) => ctx.querySelector(sel),
-    qa: (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel)),
+    q: (s, c = document) => c.querySelector(s),
+    qa: (s, c = document) => [...c.querySelectorAll(s)]
   };
 
-  const Formatters = {
-    date: () => {
-      const d = new Date();
-      const p = (n) => String(n).padStart(2, "0");
+  const Fmt = {
+    d: () => {
+      const d = new Date(), p = n => String(n).padStart(2, "0");
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}_${p(d.getMinutes())}_${p(d.getSeconds())}`;
     },
-    ident: () => {
-      const base = document.title.split('/')[0].trim() || location.pathname.split('/')[1] || "X";
-      return base.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_");
-    },
-    filename: () => `X_Timeline_${Formatters.ident()}_${Formatters.date()}.jsonl`,
-    profileFilename: () => `X_Profile_${Formatters.ident()}_${Formatters.date()}.json`,
+    i: () => (document.title.split('/')[0].trim() || location.pathname.split('/')[1] || "X").replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_"),
+    f: (ext, isP) => `X_${isP ? "Profile" : "Timeline"}_${Fmt.i()}_${Fmt.d()}.${ext}`
   };
 
   const Store = {
     data: new Map(),
     isScrolling: false,
-    add(entities) {
-      entities.forEach((e) => {
-        if (e && e.id) this.data.set(e.id, JSON.stringify(e));
-      });
+    add(arr) { arr.forEach(e => e?.id && this.data.set(e.id, JSON.stringify(e))); },
+    clear() { this.data.clear(); }
+  };
+
+  const toCSV = (arr) => {
+    if (!arr.length) return "";
+    const keys = [...arr.reduce((s, r) => (Object.keys(r).forEach(k => s.add(k)), s), new Set())];
+    const esc = v => {
+      if (v == null) return "";
+      const s = typeof v === "object" ? JSON.stringify(v) : String(v).replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    return [keys.join(","), ...arr.map(r => keys.map(k => esc(r[k])).join(","))].join("\n");
+  };
+
+  const Exporters = {
+    "JSON(L)": {
+      timeline: { ext: "jsonl", mime: "application/jsonl", parse: m => [...m.values()].join("\n") },
+      profile: { ext: "json", mime: "application/json", parse: d => JSON.stringify(d, null, 2) }
     },
-    dump() {
-      return Array.from(this.data.values()).join("\n");
-    },
-    clear() {
-      this.data.clear();
-    },
+    "CSV": {
+      timeline: { ext: "csv", mime: "text/csv;charset=utf-8;", parse: m => toCSV([...m.values()].map(JSON.parse)) },
+      profile: { ext: "csv", mime: "text/csv;charset=utf-8;", parse: d => toCSV([d]) }
+    }
   };
 
   const Parser = {
-    user: (node) => {
-      if (!node) return null;
-      const nameEls = DOM.qa("a:first-child span, a:first-child img", node);
-      const nickname = nameEls.reduce((acc, el) => {
-        if (el.tagName === "IMG") return acc + (el.getAttribute("alt") || "");
-        if (el.tagName === "SPAN" && !el.children.length) return acc + el.textContent;
-        return acc;
-      }, "");
-      const handle = DOM.qa("span", node).find((s) => s.textContent.startsWith("@"))?.textContent;
-      return { nickname: nickname.trim(), handle };
+    user: (n) => {
+      if (!n) return null;
+      const nick = DOM.qa("a:first-child span, a:first-child img", n).reduce((a, e) => e.tagName === "IMG" ? a + (e.getAttribute("alt") || "") : e.tagName === "SPAN" && !e.children.length && !e.textContent.startsWith("@") ? a + e.textContent : a, "");      return { nickname: nick.trim(), handle: DOM.qa("span", n).find(s => s.textContent.startsWith("@"))?.textContent };
     },
-    metrics: (str) => {
-      if (!str) return null;
-      const ext = (kw) => {
-        const m = str.match(new RegExp(`([\\d,]+)\\s*(?:${kw})`, "i"));
-        return m ? Number(m[1].replace(/,/g, "")) : 0;
-      };
-      return {
-        replies: ext(I18N.replies),
-        retweets: ext(I18N.reposts),
-        likes: ext(I18N.likes),
-        bookmarks: ext(I18N.bookmarks),
-        views: ext(I18N.views),
-      };
+    metrics: (s) => {
+      if (!s) return null;
+      const ex = kw => { const m = s.match(new RegExp(`([\\d,]+)\\s*(?:${kw})`, "i")); return m ? Number(m[1].replace(/,/g, "")) : 0; };
+      return { replies: ex(I18N.replies), retweets: ex(I18N.reposts), likes: ex(I18N.likes), bookmarks: ex(I18N.bookmarks), views: ex(I18N.views) };
     },
-    entity: (node) => {
-      const isRetweet = !!DOM.q('[data-testid="socialContext"]', node);
-      const users = DOM.qa('[data-testid="User-Name"]', node);
-      const texts = DOM.qa('[data-testid="tweetText"]', node);
-      const times = DOM.qa("time", node);
-      const avatars = DOM.qa('[data-testid="Tweet-User-Avatar"] img', node);
-      const medias = DOM.qa('[data-testid="tweetPhoto"] img', node).map((img) => img.src);
-      const metricsNode = DOM.qa("div", node).find((d) => new RegExp(I18N.views, "i").test(d.getAttribute("aria-label") || ""));
-
-      const parseInner = (idx) => {
-        if (!times[idx] && !texts[idx]) return null;
-        const url = times[idx]?.closest("a")?.getAttribute("href") || null;
-        return {
-          id: url?.split("/").pop() || null,
-          url,
-          time: times[idx]?.getAttribute("datetime") || null,
-          content: texts[idx]?.textContent.trim() || null,
-          lang: texts[idx]?.getAttribute("lang") || null,
-          author: {
-            avatar: avatars[idx]?.src || null,
-            ...Parser.user(users[idx]),
-          },
-        };
+    entity: (n) => {
+      const u = DOM.qa('[data-testid="User-Name"]', n), t = DOM.qa('[data-testid="tweetText"]', n), tm = DOM.qa("time", n),
+            a = DOM.qa('[data-testid="Tweet-User-Avatar"] img', n), m = DOM.qa('[data-testid="tweetPhoto"] img', n).map(i => i.src),
+            mn = DOM.qa("div", n).find(d => new RegExp(I18N.views, "i").test(d.getAttribute("aria-label") || ""));
+      const p = (i) => {
+        if (!tm[i] && !t[i]) return null;
+        const url = tm[i]?.closest("a")?.getAttribute("href") || null;
+        return { id: url?.split("/").pop() || null, url, time: tm[i]?.getAttribute("datetime") || null, content: t[i]?.textContent.trim() || null, author: { avatar: a[i]?.src || null, ...Parser.user(u[i]) } };
       };
-
-      const main = parseInner(0) || {};
-      return {
-        id: main.id,
-        url: main.url,
-        isRetweet,
-        time: main.time,
-        lang: main.lang,
-        content: main.content,
-        media: medias.length ? medias : null,
-        author: main.author,
-        quote: parseInner(1),
-        metrics: Parser.metrics(metricsNode?.getAttribute("aria-label")),
-      };
+      const main = p(0) || {};
+      return { id: main.id, url: main.url, isRetweet: !!DOM.q('[data-testid="socialContext"]', n), time: main.time, content: main.content, media: m.length ? m : null, author: main.author, quote: p(1), metrics: Parser.metrics(mn?.getAttribute("aria-label")) };
     },
     extractVisible: () => DOM.qa('article[data-testid="tweet"]').map(Parser.entity),
     profile: () => {
-      const extText = (n) => {
-        if (!n) return "";
-        return Array.from(n.childNodes).reduce((acc, c) => {
-          if (c.nodeType === 3) return acc + (c.nodeValue || "");
-          if (c.nodeName === "IMG" && c.alt) return acc + c.alt;
-          return acc + extText(c);
-        }, "");
-      };
-      const ext = (sel, p) => {
-        try {
-          const el = DOM.q(sel);
-          if (!el) return null;
-          const v = p(el);
-          return (v === "null" || v === "undefined" || v === "" || Number.isNaN(v)) ? null : v;
-        } catch (_) { return null; }
-      };
-
-      const nameBlocks = DOM.qa('[data-testid="UserName"] div[dir="ltr"]');
+      const txt = n => !n ? "" : [...n.childNodes].reduce((a, c) => c.nodeType === 3 ? a + (c.nodeValue || "") : c.nodeName === "IMG" && c.alt ? a + c.alt : a + txt(c), "");
+      const ext = (s, p) => { try { const e = DOM.q(s); if (!e) return null; const v = p(e); return (v === "null" || v === "undefined" || v === "" || Number.isNaN(v)) ? null : v; } catch { return null; } };
+      const n = DOM.qa('[data-testid="UserName"] div[dir="ltr"]');
       return {
-        avatarUrl: ext('a[href$="/photo"] img', e => e.src),
-        headerUrl: ext('a[href$="/header_photo"] img', e => e.src),
-        displayName: nameBlocks[0] ? extText(nameBlocks[0]).trim() || null : null,
-        handle: nameBlocks[1] ? extText(nameBlocks[1]).trim() || null : null,
-        bio: ext('[data-testid="UserDescription"]', e => extText(e).trim()),
-        location: ext('[data-testid="UserLocation"]', e => extText(e).trim()),
-        website: ext('[data-testid="UserUrl"]', e => {
-          const u = extText(e).trim();
-          return u ? (u.startsWith("http") ? u : `https://${u}`) : null;
-        }),
-        joinDate: ext('[data-testid="UserJoinDate"]', e => extText(e).trim()),
-        following: ext('a[href$="/following"]', e => parseInt(extText(e).replace(/\D/g, ""), 10)),
-        followers: ext('a[href$="/verified_followers"], a[href$="/followers"]', e => parseInt(extText(e).replace(/\D/g, ""), 10)),
-        postCount: ext('h2[role="heading"] + div[dir="ltr"]', e => parseInt(extText(e).replace(/\D/g, ""), 10))
+        avatarUrl: ext('a[href$="/photo"] img', e => e.src), headerUrl: ext('a[href$="/header_photo"] img', e => e.src),
+        displayName: n[0] ? txt(n[0]).trim() || null : null, handle: n[1] ? txt(n[1]).trim() || null : null,
+        bio: ext('[data-testid="UserDescription"]', e => txt(e).trim()), location: ext('[data-testid="UserLocation"]', e => txt(e).trim()),
+        website: ext('[data-testid="UserUrl"]', e => { const u = txt(e).trim(); return u ? (u.startsWith("http") ? u : `https://${u}`) : null; }),
+        joinDate: ext('[data-testid="UserJoinDate"]', e => txt(e).trim()), following: ext('a[href$="/following"]', e => parseInt(txt(e).replace(/\D/g, ""), 10)),
+        followers: ext('a[href$="/verified_followers"], a[href$="/followers"]', e => parseInt(txt(e).replace(/\D/g, ""), 10)), postCount: ext('h2[role="heading"] + div[dir="ltr"]', e => parseInt(txt(e).replace(/\D/g, ""), 10))
       };
     }
   };
 
   const ACTIONS = {
-    triggerDownload: (data, filename, type = "application/jsonl") => {
-      if (!data) return;
+    exec: (data, isProfile) => {
+      if (!data || (isProfile && !data.handle && !data.displayName)) return;
+      const conf = Exporters[State.format][isProfile ? "profile" : "timeline"];
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([data], { type }));
-      a.download = filename;
+      a.href = URL.createObjectURL(new Blob([conf.parse(data)], { type: conf.mime }));
+      a.download = Fmt.f(conf.ext, isProfile);
       a.click();
       URL.revokeObjectURL(a.href);
-    },
-    dumpVisible: () => {
-      Store.clear();
-      Store.add(Parser.extractVisible());
-      ACTIONS.triggerDownload(Store.dump(), Formatters.filename());
-    },
-    dumpProfile: () => {
-      const data = Parser.profile();
-      if (!data || (!data.handle && !data.displayName)) return;
-      ACTIONS.triggerDownload(JSON.stringify(data, null, 2), Formatters.profileFilename(), "application/json");
-    },
-    startAutoScroll: async () => {
-      if (Store.isScrolling) return;
-      Store.clear();
-      Store.isScrolling = true;
-      let idle = 0;
-
-      while (Store.isScrolling) {
-        const prevSize = Store.data.size;
-        Store.add(Parser.extractVisible());
-
-        if (Store.data.size === prevSize) {
-          idle++;
-          if (idle > 3) break;
-        } else {
-          idle = 0;
-        }
-
-        window.scrollBy(0, window.innerHeight * 0.8);
-        await new Promise((r) => setTimeout(r, 1200));
-      }
-
-      Store.isScrolling = false;
-      ACTIONS.triggerDownload(Store.dump(), Formatters.filename());
-    },
-    stopAutoScroll: () => {
-      Store.isScrolling = false;
-    },
-    scrollToAbsoluteTop: () => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    },
-    openRepo: () => window.open(CONFIG.repoUrl, "_blank"),
-    openLicense: () => window.open(CONFIG.licenseUrl, "_blank"),
+    }
   };
 
-  const MENU_OPTIONS = [
-    { label: "Dump Visible Timeline", action: ACTIONS.dumpVisible },
-    { label: "Dump Profile Data", action: ACTIONS.dumpProfile },
-    { label: "Start Auto-Scroll", action: ACTIONS.startAutoScroll, keepOpen: true },
-    { label: "Stop & Save", action: ACTIONS.stopAutoScroll },
-    { label: "Go Top", action: ACTIONS.scrollToAbsoluteTop },
-    { label: "View on GitHub", action: ACTIONS.openRepo },
-    { label: "License", action: ACTIONS.openLicense },
+  const MENU_SCHEMA = [
+    { type: "toggle", opts: ["JSON(L)", "CSV"], bind: () => State.format, onChange: v => State.format = v },
+    { type: "separator" },
+    { type: "action", label: "Dump Visible Timeline", action: () => { Store.clear(); Store.add(Parser.extractVisible()); ACTIONS.exec(Store.data, false); } },
+    { type: "action", label: "Dump Profile Data", action: () => ACTIONS.exec(Parser.profile(), true) },
+    { type: "action", label: "Start Auto-Scroll", keepOpen: true, action: async () => {
+      if (Store.isScrolling) return;
+      Store.clear(); Store.isScrolling = true; let idle = 0;
+      while (Store.isScrolling) {
+        const pSize = Store.data.size;
+        Store.add(Parser.extractVisible());
+        if (Store.data.size === pSize && ++idle > 3) break; else idle = 0;
+        window.scrollBy(0, window.innerHeight * 0.8);
+        await new Promise(r => setTimeout(r, 1200));
+      }
+      Store.isScrolling = false; ACTIONS.exec(Store.data, false);
+    }},
+    { type: "action", label: "Stop & Save", action: () => Store.isScrolling = false },
+    { type: "separator" },
+    { type: "action", label: "Go Top", action: () => window.scrollTo({ top: 0, behavior: "smooth" }) },
+    { type: "action", label: "View on GitHub", action: () => window.open(CONFIG.repoUrl, "_blank") },
+    { type: "action", label: "License", action: () => window.open(CONFIG.licenseUrl, "_blank") }
   ];
 
   const UI = {
@@ -238,78 +164,64 @@
     init() {
       const style = document.createElement("style");
       style.textContent = `
-                .x-archiver-menu {
-                    position: fixed; display: none; flex-direction: column; z-index: 9999;
-                    background: var(--colors-background, #fff); color: var(--colors-text, #0f1419);
-                    border: 1px solid var(--colors-border, #eff3f4);
-                    border-radius: 8px; box-shadow: rgba(101, 119, 134, 0.2) 0px 0px 15px, rgba(101, 119, 134, 0.15) 0px 0px 3px 1px;
-                    padding: 6px 0; min-width: 160px; margin: 0; list-style: none; font-size: 15px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                }
-                .x-archiver-menu li { padding: 12px 16px; cursor: pointer; transition: background 0.2s; font-weight: 700; }
-                .x-archiver-menu li:hover { background: rgba(15, 20, 25, 0.1); }
-                @media (prefers-color-scheme: dark) {
-                    .x-archiver-menu { background: #000; border-color: #2f3336; color: #e7e9ea; box-shadow: rgba(255, 255, 255, 0.2) 0px 0px 15px, rgba(255, 255, 255, 0.15) 0px 0px 3px 1px; }
-                    .x-archiver-menu li:hover { background: rgba(255, 255, 255, 0.1); }
-                }
-            `;
+        .x-archiver-menu{position:fixed;display:none;flex-direction:column;z-index:9999;background:var(--colors-background,#fff);color:var(--colors-text,#0f1419);border:1px solid var(--colors-border,#eff3f4);border-radius:12px;box-shadow:rgba(101,119,134,0.2) 0 0 15px,rgba(101,119,134,0.15) 0 0 3px 1px;padding:8px 0;min-width:180px;margin:0;list-style:none;font-size:15px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+        .x-archiver-menu .x-am-action{padding:12px 16px;cursor:pointer;transition:background .2s;font-weight:700}
+        .x-archiver-menu .x-am-action:hover{background:rgba(15,20,25,.08)}
+        .x-archiver-menu .x-am-sep{height:1px;background:var(--colors-border,#eff3f4);margin:4px 0}
+        .x-archiver-menu .x-am-toggle{display:flex;padding:4px 12px;margin-bottom:4px;gap:4px}
+        .x-archiver-menu .x-am-toggle-btn{flex:1;padding:6px 0;text-align:center;font-size:13px;font-weight:700;border-radius:6px;cursor:pointer;transition:all .2s ease;color:#536471}
+        .x-archiver-menu .x-am-toggle-btn:hover{background:rgba(15,20,25,.05)}
+        .x-archiver-menu .x-am-toggle-btn.active{background:#1d9bf0;color:#fff}
+        @media(prefers-color-scheme:dark){.x-archiver-menu{background:#000;border-color:#2f3336;color:#e7e9ea;box-shadow:rgba(255,255,255,0.2) 0 0 15px,rgba(255,255,255,0.15) 0 0 3px 1px}.x-archiver-menu .x-am-action:hover{background:rgba(255,255,255,.08)}.x-archiver-menu .x-am-sep{background:#2f3336}.x-archiver-menu .x-am-toggle-btn{color:#71767b}.x-archiver-menu .x-am-toggle-btn:hover{background:rgba(255,255,255,.05)}.x-archiver-menu .x-am-toggle-btn.active{background:#1d9bf0;color:#fff}}
+      `;
       document.head.appendChild(style);
 
       this.menu = document.createElement("menu");
       this.menu.className = "x-archiver-menu";
-      MENU_OPTIONS.forEach(({ label, action, keepOpen }) => {
-        const li = document.createElement("li");
-        li.innerText = label;
-        li.onclick = (e) => {
-          e.stopPropagation();
-          if (!keepOpen) this.hide();
-          action();
-        };
-        this.menu.appendChild(li);
+      MENU_SCHEMA.forEach(i => {
+        if (i.type === "separator") {
+          const sep = document.createElement("div");
+          sep.className = "x-am-sep";
+          this.menu.appendChild(sep);
+        } else if (i.type === "action") {
+          const li = document.createElement("li");
+          li.className = "x-am-action"; li.innerText = i.label;
+          li.onclick = e => { e.stopPropagation(); if (!i.keepOpen) this.hide(); i.action(); };
+          this.menu.appendChild(li);
+        } else if (i.type === "toggle") {
+          const c = document.createElement("div"); c.className = "x-am-toggle";
+          i.opts.forEach(opt => {
+            const btn = document.createElement("div");
+            btn.className = `x-am-toggle-btn ${i.bind() === opt ? 'active' : ''}`; btn.innerText = opt;
+            btn.onclick = e => { e.stopPropagation(); DOM.qa(".x-am-toggle-btn", c).forEach(b => b.classList.remove("active")); btn.classList.add("active"); i.onChange(opt); };
+            c.appendChild(btn);
+          });
+          this.menu.appendChild(c);
+        }
       });
       document.body.appendChild(this.menu);
       document.addEventListener("click", () => this.hide());
     },
-    show(target) {
-      const rect = target.getBoundingClientRect();
-      this.menu.style.display = "flex";
-      this.menu.style.top = `${rect.bottom + 8}px`;
-      this.menu.style.left = `${rect.left - 100}px`;
+    show(t) {
+      const r = t.getBoundingClientRect();
+      this.menu.style.display = "flex"; this.menu.style.top = `${r.bottom + 8}px`; this.menu.style.left = `${r.left - 100}px`;
     },
-    hide() {
-      if (this.menu) this.menu.style.display = "none";
-    },
+    hide() { if (this.menu) this.menu.style.display = "none"; }
   };
 
   const Lifecycle = {
     inject() {
       if (DOM.q('[data-injector="archiver"]')) return;
-      const searchSelectors = I18N.search.split("|").map(s => `button[aria-label="${s}"]`).join(", ");
-      const targetRef = DOM.q(searchSelectors);
-      if (!targetRef) return;
-
-      const container = targetRef.parentElement;
-      const btn = targetRef.cloneNode(true);
-
-      btn.setAttribute("aria-label", "Archive Timeline");
-      btn.setAttribute("data-injector", "archiver");
-
-      const path = DOM.q("path", btn);
-      if (path) {
-        path.setAttribute("d", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z");
-      }
-
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        UI.show(btn);
-      });
-
-      container.insertBefore(btn, targetRef);
+      const ref = DOM.q(I18N.search.split("|").map(s => `button[aria-label="${s}"]`).join(", "));
+      if (!ref) return;
+      const btn = ref.cloneNode(true);
+      btn.setAttribute("aria-label", "Archive"); btn.setAttribute("data-injector", "archiver");
+      const p = DOM.q("path", btn);
+      if (p) p.setAttribute("d", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z");
+      btn.onclick = e => { e.preventDefault(); e.stopPropagation(); UI.show(btn); };
+      ref.parentElement.insertBefore(btn, ref);
     },
-    observe() {
-      const observer = new MutationObserver(() => this.inject());
-      observer.observe(document.body, { childList: true, subtree: true });
-    },
+    observe() { new MutationObserver(() => this.inject()).observe(document.body, { childList: true, subtree: true }); }
   };
 
   UI.init();
