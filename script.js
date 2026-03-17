@@ -2,7 +2,7 @@
 // @name         X (Twitter) Timeline Archiver
 // @name:zh-CN   X (Twitter) 时间线归档助手
 // @namespace    https://github.com/miniyu157/x-timeline-archiver
-// @version      2026.3.16
+// @version      2026.3.17
 // @description  Elegant and minimalist timeline archiver for X.
 // @description:zh-CN 极简的 X (Twitter) 时间线归档工具。
 // @author       Yumeka
@@ -17,10 +17,18 @@
 (() => {
   "use strict";
 
+  const I18N = {
+    replies: "回复|回覆|Replies|Reply|replies|reply",
+    reposts: "次转帖|次轉發|reposts|Reposts|repost|Repost",
+    likes: "喜欢次数|喜欢|個喜歡|Likes|Like|likes|like",
+    bookmarks: "书签|個書籤|Bookmarks|Bookmark|bookmarks|bookmark",
+    views: "次观看|次查看|次觀看|views|Views|view|View",
+    search: "搜索|搜尋|Search"
+  };
+
   const CONFIG = {
     repoUrl: "https://github.com/miniyu157/x-timeline-archiver",
-    licenseUrl:
-      "https://github.com/miniyu157/x-timeline-archiver/blob/main/LICENSE",
+    licenseUrl: "https://github.com/miniyu157/x-timeline-archiver/blob/main/LICENSE",
   };
 
   const DOM = {
@@ -34,7 +42,12 @@
       const p = (n) => String(n).padStart(2, "0");
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}_${p(d.getMinutes())}_${p(d.getSeconds())}`;
     },
-    filename: () => `X_Timeline_${Formatters.date()}.jsonl`,
+    ident: () => {
+      const base = document.title.split('/')[0].trim() || location.pathname.split('/')[1] || "X";
+      return base.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_");
+    },
+    filename: () => `X_Timeline_${Formatters.ident()}_${Formatters.date()}.jsonl`,
+    profileFilename: () => `X_Profile_${Formatters.ident()}_${Formatters.date()}.json`,
   };
 
   const Store = {
@@ -59,27 +72,24 @@
       const nameEls = DOM.qa("a:first-child span, a:first-child img", node);
       const nickname = nameEls.reduce((acc, el) => {
         if (el.tagName === "IMG") return acc + (el.getAttribute("alt") || "");
-        if (el.tagName === "SPAN" && !el.children.length)
-          return acc + el.textContent;
+        if (el.tagName === "SPAN" && !el.children.length) return acc + el.textContent;
         return acc;
       }, "");
-      const handle = DOM.qa("span", node).find((s) =>
-        s.textContent.startsWith("@"),
-      )?.textContent;
+      const handle = DOM.qa("span", node).find((s) => s.textContent.startsWith("@"))?.textContent;
       return { nickname: nickname.trim(), handle };
     },
     metrics: (str) => {
       if (!str) return null;
       const ext = (kw) => {
-        const m = str.match(new RegExp(`([\\d,]+)\\s*(?:${kw})`));
+        const m = str.match(new RegExp(`([\\d,]+)\\s*(?:${kw})`, "i"));
         return m ? Number(m[1].replace(/,/g, "")) : 0;
       };
       return {
-        replies: ext("回复"),
-        retweets: ext("次转帖"),
-        likes: ext("喜欢次数|喜欢"),
-        bookmarks: ext("书签"),
-        views: ext("次观看|次查看"),
+        replies: ext(I18N.replies),
+        retweets: ext(I18N.reposts),
+        likes: ext(I18N.likes),
+        bookmarks: ext(I18N.bookmarks),
+        views: ext(I18N.views),
       };
     },
     entity: (node) => {
@@ -88,12 +98,8 @@
       const texts = DOM.qa('[data-testid="tweetText"]', node);
       const times = DOM.qa("time", node);
       const avatars = DOM.qa('[data-testid="Tweet-User-Avatar"] img', node);
-      const medias = DOM.qa('[data-testid="tweetPhoto"] img', node).map(
-        (img) => img.src,
-      );
-      const metricsNode = DOM.qa("div", node).find((d) =>
-        /观看|查看/.test(d.getAttribute("aria-label") || ""),
-      );
+      const medias = DOM.qa('[data-testid="tweetPhoto"] img', node).map((img) => img.src);
+      const metricsNode = DOM.qa("div", node).find((d) => new RegExp(I18N.views, "i").test(d.getAttribute("aria-label") || ""));
 
       const parseInner = (idx) => {
         if (!times[idx] && !texts[idx]) return null;
@@ -125,25 +131,63 @@
         metrics: Parser.metrics(metricsNode?.getAttribute("aria-label")),
       };
     },
-    extractVisible: () =>
-      DOM.qa('article[data-testid="tweet"]').map(Parser.entity),
+    extractVisible: () => DOM.qa('article[data-testid="tweet"]').map(Parser.entity),
+    profile: () => {
+      const extText = (n) => {
+        if (!n) return "";
+        return Array.from(n.childNodes).reduce((acc, c) => {
+          if (c.nodeType === 3) return acc + (c.nodeValue || "");
+          if (c.nodeName === "IMG" && c.alt) return acc + c.alt;
+          return acc + extText(c);
+        }, "");
+      };
+      const ext = (sel, p) => {
+        try {
+          const el = DOM.q(sel);
+          if (!el) return null;
+          const v = p(el);
+          return (v === "null" || v === "undefined" || v === "" || Number.isNaN(v)) ? null : v;
+        } catch (_) { return null; }
+      };
+
+      const nameBlocks = DOM.qa('[data-testid="UserName"] div[dir="ltr"]');
+      return {
+        avatarUrl: ext('a[href$="/photo"] img', e => e.src),
+        headerUrl: ext('a[href$="/header_photo"] img', e => e.src),
+        displayName: nameBlocks[0] ? extText(nameBlocks[0]).trim() || null : null,
+        handle: nameBlocks[1] ? extText(nameBlocks[1]).trim() || null : null,
+        bio: ext('[data-testid="UserDescription"]', e => extText(e).trim()),
+        location: ext('[data-testid="UserLocation"]', e => extText(e).trim()),
+        website: ext('[data-testid="UserUrl"]', e => {
+          const u = extText(e).trim();
+          return u ? (u.startsWith("http") ? u : `https://${u}`) : null;
+        }),
+        joinDate: ext('[data-testid="UserJoinDate"]', e => extText(e).trim()),
+        following: ext('a[href$="/following"]', e => parseInt(extText(e).replace(/\D/g, ""), 10)),
+        followers: ext('a[href$="/verified_followers"], a[href$="/followers"]', e => parseInt(extText(e).replace(/\D/g, ""), 10)),
+        postCount: ext('h2[role="heading"] + div[dir="ltr"]', e => parseInt(extText(e).replace(/\D/g, ""), 10))
+      };
+    }
   };
 
   const ACTIONS = {
-    triggerDownload: (data) => {
+    triggerDownload: (data, filename, type = "application/jsonl") => {
       if (!data) return;
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(
-        new Blob([data], { type: "application/jsonl" }),
-      );
-      a.download = Formatters.filename();
+      a.href = URL.createObjectURL(new Blob([data], { type }));
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(a.href);
     },
     dumpVisible: () => {
       Store.clear();
       Store.add(Parser.extractVisible());
-      ACTIONS.triggerDownload(Store.dump());
+      ACTIONS.triggerDownload(Store.dump(), Formatters.filename());
+    },
+    dumpProfile: () => {
+      const data = Parser.profile();
+      if (!data || (!data.handle && !data.displayName)) return;
+      ACTIONS.triggerDownload(JSON.stringify(data, null, 2), Formatters.profileFilename(), "application/json");
     },
     startAutoScroll: async () => {
       if (Store.isScrolling) return;
@@ -167,7 +211,7 @@
       }
 
       Store.isScrolling = false;
-      ACTIONS.triggerDownload(Store.dump());
+      ACTIONS.triggerDownload(Store.dump(), Formatters.filename());
     },
     stopAutoScroll: () => {
       Store.isScrolling = false;
@@ -180,12 +224,9 @@
   };
 
   const MENU_OPTIONS = [
-    { label: "Dump Visible", action: ACTIONS.dumpVisible },
-    {
-      label: "Start Auto-Scroll",
-      action: ACTIONS.startAutoScroll,
-      keepOpen: true,
-    },
+    { label: "Dump Visible Timeline", action: ACTIONS.dumpVisible },
+    { label: "Dump Profile Data", action: ACTIONS.dumpProfile },
+    { label: "Start Auto-Scroll", action: ACTIONS.startAutoScroll, keepOpen: true },
     { label: "Stop & Save", action: ACTIONS.stopAutoScroll },
     { label: "Go Top", action: ACTIONS.scrollToAbsoluteTop },
     { label: "View on GitHub", action: ACTIONS.openRepo },
@@ -242,9 +283,8 @@
   const Lifecycle = {
     inject() {
       if (DOM.q('[data-injector="archiver"]')) return;
-      const targetRef = DOM.q(
-        'button[aria-label="搜索"], button[aria-label="Search"]',
-      );
+      const searchSelectors = I18N.search.split("|").map(s => `button[aria-label="${s}"]`).join(", ");
+      const targetRef = DOM.q(searchSelectors);
       if (!targetRef) return;
 
       const container = targetRef.parentElement;
@@ -255,10 +295,7 @@
 
       const path = DOM.q("path", btn);
       if (path) {
-        path.setAttribute(
-          "d",
-          "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z",
-        );
+        path.setAttribute("d", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z");
       }
 
       btn.addEventListener("click", (e) => {
