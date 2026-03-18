@@ -2,7 +2,7 @@
 // @name         X (Twitter) Timeline & Thread Archiver
 // @name:zh-CN   X (Twitter) 时间线与帖子归档助手
 // @namespace    https://github.com/miniyu157/x-timeline-archiver
-// @version      v2026.3.18-3
+// @version      v2026.3.18.2
 // @description  Elegant and minimalist timeline & thread archiver for X.
 // @description:zh-CN 优雅极简的 X (Twitter) 时间线与帖子归档工具。
 // @author       Yumeka
@@ -16,13 +16,13 @@
 
 /*
   X (Twitter) Timeline Archiver 更新日志
-      --- v2026.3.18-3 ---
+      --- v2026.3.18.2 ---
   * feat: 新增 Changelog 菜单, 它会根据仓库检索 tag 以查看更新日志
 
-      --- v2026.3.18-2 ---
+      --- v2026.3.18.1 ---
   * fix: 修复移动端时间线归档按钮失效
 
-      --- v2026.3.18 ---
+      --- v2026.3.18.0 ---
   * refactor: 移除硬编码 I18N 对象, 完全使用 DOM 结构解析
   * feat: 新增帖子树归档功能 (目前仅能获取表层回复, 并跳过裸露在外的回复)
       入口按钮在帖子卡片右上角 "更多" 按钮的附近
@@ -38,18 +38,18 @@
   * perf: 添加防抖并优化性能
   * ui: 更换图标样式
 
-      --- v2026.3.17-2 ---
+      --- v2026.3.17.1 ---
   * feat: 添加导出格式菜单 JSON(L)/CSV；
   * feat!: 移除 lang 字段；
   * feat!: nickname 字段由包含昵称+ID, 改为仅包含昵称；
   * style: 代码风格变得更加紧凑。
 
-      --- v2026.3.17 ---
+      --- v2026.3.17.0 ---
   * feat: 新增 Dump Profile Data 功能；
   * feat: 新增抓取页面的多语言支持；
   * feat: 下载文件时的友好文件名。
 
-      --- v2026.3.16 ---
+      --- v2026.3.16.0 ---
   * init: 初始版本，功能不多，易维护。
 */
 
