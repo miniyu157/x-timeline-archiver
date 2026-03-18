@@ -8,7 +8,7 @@
 ![GitHub repo size](https://img.shields.io/github/repo-size/miniyu157/x-timeline-archiver?style=flat-square&color=8e44ad&label=repo%20size)
 ![GitHub stars](https://img.shields.io/github/stars/miniyu157/x-timeline-archiver?style=flat-square&color=f1c40f)  
 [![Greasy Fork](https://img.shields.io/greasyfork/v/569862-x-twitter-timeline-archiver?style=flat-square&color=e67e22)](https://greasyfork.org/scripts/569862-x-twitter-timeline-archiver)
-[![Install Userscript](https://img.shields.io/badge/Install-Userscript-orange?style=flat-square&logo=tampermonkey)](https://raw.githubusercontent.com/miniyu157/x-timeline-archiver/main/script.js)
+[![Install Userscript](https://img.shields.io/badge/Install-Userscript-orange?style=flat-square&logo=tampermonkey)](https://update.greasyfork.org/scripts/569862/X%20%28Twitter%29%20Timeline%20%20Thread%20Archiver.user.js)
 
 ---
 
