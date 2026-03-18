@@ -5,8 +5,8 @@
 极简的 X (Twitter) 时间线与帖子归档助手。
 
 [![MIT License](https://img.shields.io/badge/License-MIT-pink.svg?style=flat-square)](./LICENSE)
-![GitHub repo size](https://img.shields.io/github/repo-size/miniyu157/x-timeline-archiver?style=flat-square&color=8e44ad&label=repo%20size)
-![GitHub stars](https://img.shields.io/github/stars/miniyu157/x-timeline-archiver?style=flat-square&color=f1c40f)  
+[![GitHub repo size](https://img.shields.io/github/repo-size/miniyu157/x-timeline-archiver?style=flat-square&color=8e44ad&label=repo%20size)](https://github.com/miniyu157/x-timeline-archiver)
+[![GitHub stars](https://img.shields.io/github/stars/miniyu157/x-timeline-archiver?style=flat-square&color=f1c40f)](https://github.com/miniyu157/x-timeline-archiver)  
 [![Greasy Fork](https://img.shields.io/greasyfork/v/569862-x-twitter-timeline-archiver?style=flat-square&color=e67e22)](https://greasyfork.org/scripts/569862-x-twitter-timeline-archiver)
 [![Install Userscript](https://img.shields.io/badge/Install-Userscript-orange?style=flat-square&logo=tampermonkey)](https://update.greasyfork.org/scripts/569862/X%20%28Twitter%29%20Timeline%20%20Thread%20Archiver.user.js)
 
