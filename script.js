@@ -2,7 +2,7 @@
 // @name         X (Twitter) Timeline & Thread Archiver
 // @name:zh-CN   X (Twitter) 时间线与帖子归档助手
 // @namespace    https://github.com/miniyu157/x-timeline-archiver
-// @version      v2026.3.18-2
+// @version      v2026.3.18-3
 // @description  Elegant and minimalist timeline & thread archiver for X.
 // @description:zh-CN 优雅极简的 X (Twitter) 时间线与帖子归档工具。
 // @author       Yumeka
@@ -16,6 +16,9 @@
 
 /*
   X (Twitter) Timeline Archiver 更新日志
+      --- v2026.3.18-3 ---
+  * feat: 新增 Changelog 菜单, 它会根据仓库检索 tag 以查看更新日志
+
       --- v2026.3.18-2 ---
   * fix: 修复移动端时间线归档按钮失效
 
@@ -81,6 +84,54 @@
     add(arr) { arr.forEach(e => e?.id && this.data.set(e.id, JSON.stringify(e))); },
     clear() { this.data.clear(); this.excluded.clear(); },
     clean() { this.excluded.forEach(id => this.data.delete(id)); }
+  };
+
+  const Changelog = {
+    data: null,
+    fetching: false,
+    async fetch() {
+      if (this.data) return this.data;
+      if (this.fetching) return [];
+      this.fetching = true;
+      try {
+        const repoPath = CONFIG.repoUrl.replace("https://github.com/", "");
+        const res = await fetch(`https://api.github.com/repos/${repoPath}/tags?per_page=5`);
+        const tags = await res.json();
+        this.data = await Promise.all(tags.map(async t => {
+          const cRes = await fetch(t.commit.url);
+          const cData = await cRes.json();
+          return { v: t.name, m: cData.commit.message };
+        }));
+      } catch {
+        this.data = [{ v: "Error", m: "Failed to fetch changelog." }];
+      }
+      this.fetching = false;
+      return this.data;
+    }
+  };
+
+  const Modal = {
+    el: null,
+    init() {
+      const style = document.createElement("style");
+      style.textContent = `.x-archiver-modal{padding:0;border:none;border-radius:16px;background:var(--colors-background,#fff);color:var(--colors-text,#0f1419);width:90%;max-width:560px;max-height:80vh;overscroll-behavior:contain;box-shadow:rgba(101,119,134,0.2) 0 0 15px,rgba(101,119,134,0.15) 0 0 3px 1px}.x-archiver-modal::backdrop{background:rgba(0,0,0,0.4);backdrop-filter:blur(4px)}.x-am-header{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--colors-border,#eff3f4);font-size:20px;font-weight:700}.x-am-close{cursor:pointer;background:0 0;border:none;font-size:24px;line-height:1;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:inherit;transition:background .2s}.x-am-close:hover{background:rgba(15,20,25,.1)}.x-am-body{padding:20px;overflow-y:auto;max-height:calc(80vh - 69px);font-size:15px;line-height:1.5;white-space:pre-wrap;word-break:break-word}.x-am-item{margin-bottom:24px}.x-am-item:last-child{margin-bottom:0}.x-am-ver{font-size:17px;font-weight:700;color:#1d9bf0;margin-bottom:8px}@media(prefers-color-scheme:dark){.x-archiver-modal{background:#000;color:#e7e9ea;border:1px solid #2f3336;box-shadow:rgba(255,255,255,0.2) 0 0 15px,rgba(255,255,255,0.15) 0 0 3px 1px}.x-am-header{border-bottom-color:#2f3336}.x-am-close:hover{background:rgba(255,255,255,.1)}}`;
+      document.head.appendChild(style);
+      this.el = document.createElement("dialog");
+      this.el.className = "x-archiver-modal";
+      this.el.innerHTML = `<div class="x-am-header"><span>Changelog</span><button class="x-am-close">&times;</button></div><div class="x-am-body"></div>`;
+      document.body.appendChild(this.el);
+      DOM.q(".x-am-close", this.el).onclick = () => this.el.close();
+      this.el.onclick = e => { if (e.target === this.el) this.el.close(); };
+    },
+    async open() {
+      if (!this.el) this.init();
+      this.el.showModal();
+      const b = DOM.q(".x-am-body", this.el);
+      if (b.innerHTML && b.innerHTML !== "Loading...") return;
+      b.innerHTML = "Loading...";
+      const d = await Changelog.fetch();
+      b.innerHTML = d.map(x => `<div class="x-am-item"><div class="x-am-ver">${x.v}</div><div>${x.m.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div></div>`).join("");
+    }
   };
 
   const toCSV = (arr) => {
@@ -253,6 +304,7 @@
     { type: "action", label: "Stop & Save", action: () => Store.isScrolling = false },
     { type: "separator" },
     { type: "action", label: "Go Top", action: () => window.scrollTo({ top: 0, behavior: "smooth" }) },
+    { type: "action", label: "Changelog", action: () => Modal.open() },
     { type: "action", label: "View on GitHub", action: () => window.open(CONFIG.repoUrl, "_blank") },
     { type: "action", label: "License", action: () => window.open(CONFIG.licenseUrl, "_blank") }
   ];
@@ -310,7 +362,7 @@
       if (topNav) {
         const btns = DOM.qa('button', topNav);
         refBtn = btns.find(b => ['搜索', 'Search'].includes(b.getAttribute('aria-label')));
-        if (!refBtn && btns.length > 0) refBtn = btns[btns.length - 1]; 
+        if (!refBtn && btns.length > 0) refBtn = btns[btns.length - 1];
         if (refBtn) targetGroup = refBtn.parentElement;
       }
 
