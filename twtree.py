@@ -99,7 +99,7 @@ class TextFormatter:
 
 
 def main():
-    default_fmt = "{name} {id} {text}"
+    default_fmt = "{name}({handle}) {text}"
     placeholders = "{id}, {time}, {name}, {handle}, {text}, {media}"
 
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
