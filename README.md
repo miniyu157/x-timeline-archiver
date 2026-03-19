@@ -20,7 +20,7 @@
   <img src="https://raw.githubusercontent.com/miniyu157/x-timeline-archiver/main/assets/light.png" align="right" alt="preview" />
 </picture>
 
-- 极简、纯粹的逻辑与交互，代码行数 400 左右（LOC）；
+- 极简、纯粹的逻辑与交互，代码行数 500 左右（LOC）；
 - 针对于 X 页面的虚拟节点，提供自动滚动功能便捷获取 时间线 (Timeline) 与 帖子回复详情 (Thread)；
 - 输出格式为 JSON(L) 或 CSV，基础数据包含各项互动指标（点赞、转贴、查看等）、帖子上下文、图文内容，并自动解析引用帖子；  
 - 提供实用功能，例如导出账户信息、中途停止并保存、返回顶部等。
