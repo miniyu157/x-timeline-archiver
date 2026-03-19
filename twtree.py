@@ -64,7 +64,7 @@ class JsonFormatter:
 class TextFormatter:
     def __init__(self, indent, fmt_str, **kwargs):
         self.indent = indent
-        self.fmt_str = fmt_str
+        self.fmt_str = fmt_str.replace("\\n", "\n")
 
     def format(self, forest, out_stream):
         for tree in forest:
@@ -80,7 +80,7 @@ class TextFormatter:
             "time": node.get("time", ""),
             "name": author.get("name", ""),
             "handle": author.get("handle", ""),
-            "text": content.get("text", "").replace("\n", " ").replace("\r", ""),
+            "text": content.get("text", "").replace("\n", "\\n").replace("\r", ""),
             "media": " [media]" if content.get("media") else "",
         }
 
@@ -92,10 +92,65 @@ class TextFormatter:
             )
             sys.exit(1)
 
-        out_stream.write(f"{indent_str}{line_content}\n")
+        for line in line_content.split("\n"):
+            out_stream.write(f"{indent_str}{line}\n")
 
         for child in node.get("children", []):
             self._format_node(child, depth + 1, out_stream)
+
+
+class TreeFormatter:
+    def __init__(self, indent, fmt_str, **kwargs):
+        self.fmt_str = fmt_str.replace("\\n", "\n")
+        try:
+            from anytree import Node, RenderTree
+
+            self.Node = Node
+            self.RenderTree = RenderTree
+        except ImportError:
+            sys.stderr.write(
+                "[ERROR] 'anytree' library required for --tree. Install with: pip install anytree\n"
+            )
+            sys.exit(1)
+
+    def format(self, forest, out_stream):
+        for tree_data in forest:
+            root_node = self._format_node(tree_data, parent=None)
+            for pre, _, node in self.RenderTree(root_node):
+                lines = node.name.split("\n")
+                out_stream.write(f"{pre}{lines[0]}\n")
+                if len(lines) > 1:
+                    padding = " " * len(pre)
+                    for line in lines[1:]:
+                        out_stream.write(f"{padding}{line}\n")
+
+    def _format_node(self, node_data, parent):
+        author = node_data.get("author", {})
+        content = node_data.get("content", {})
+
+        ctx = {
+            "id": node_data.get("id", ""),
+            "time": node_data.get("time", ""),
+            "name": author.get("name", ""),
+            "handle": author.get("handle", ""),
+            "text": content.get("text", "").replace("\n", "\\n").replace("\r", ""),
+            "media": " [media]" if content.get("media") else "",
+        }
+
+        try:
+            line_content = self.fmt_str.format(**ctx)
+        except KeyError as e:
+            sys.stderr.write(
+                f"[ERROR] Invalid format placeholder {e} in format string.\n"
+            )
+            sys.exit(1)
+
+        current_node = self.Node(line_content, parent=parent)
+
+        for child in node_data.get("children", []):
+            self._format_node(child, parent=current_node)
+
+        return current_node
 
 
 def main():
@@ -108,6 +163,12 @@ def main():
     )
     parser.add_argument("-i", "--indent", type=int, default=4)
     parser.add_argument("-t", "--type", choices=["json", "txt"], default="json")
+    parser.add_argument(
+        "-T",
+        "--tree",
+        action="store_true",
+        help="Render output as an ASCII tree using 'anytree' (only applies to txt type)",
+    )
     parser.add_argument(
         "-f",
         "--format",
@@ -132,13 +193,16 @@ def main():
 
     forest = builder.build_forest()
 
-    formatters = {"json": JsonFormatter, "txt": TextFormatter}
+    if args.type == "json":
+        formatter = JsonFormatter(indent=args.indent)
+    elif args.type == "txt":
+        if args.tree:
+            formatter = TreeFormatter(indent=args.indent, fmt_str=args.format)
+        else:
+            formatter = TextFormatter(indent=args.indent, fmt_str=args.format)
 
-    formatter_class = formatters[args.type]
-    formatter = formatter_class(indent=args.indent, fmt_str=args.format)
     formatter.format(forest, sys.stdout)
 
 
 if __name__ == "__main__":
     main()
-
