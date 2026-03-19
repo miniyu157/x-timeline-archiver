@@ -2,7 +2,7 @@
 // @name         X (Twitter) Timeline & Thread Archiver
 // @name:zh-CN   X (Twitter) 时间线与帖子归档助手
 // @namespace    https://github.com/miniyu157/x-timeline-archiver
-// @version      v2026.3.18.2
+// @version      v2026.3.19.0
 // @description  Elegant and minimalist timeline & thread archiver for X.
 // @description:zh-CN 优雅极简的 X (Twitter) 时间线与帖子归档工具。
 // @author       Yumeka
@@ -16,6 +16,11 @@
 
 /*
   X (Twitter) Timeline Archiver 更新日志
+      --- v2026.3.19.0 ---
+  * fix: 修复推文详情归档功能中, 首条推文包含引用推文时, 错误的忽略了首条推文的问题
+  * fix: 修复推文详情页首条推文查看次数 (Views) 获取为 0 的问题
+  * fix: 修复时间线视图中书签数量 (Bookmarks) 因 隐藏文本/已收藏状态 导致获取为 0 的问题, 采用集合差值算法提取
+
       --- v2026.3.18.2 ---
   * feat: 新增 Changelog 菜单, 它会根据仓库检索 tag 以查看更新日志
 
@@ -176,16 +181,33 @@
       if (!n) return null;
       const ex = (selectors) => {
         const el = DOM.q(selectors, n);
-        const match = el?.getAttribute('aria-label')?.match(/([\d,]+)/);
+        if (!el) return 0;
+        const textSource = el.getAttribute('aria-label') || el.textContent || '';
+        const match = textSource.match(/([\d,]+)/);
         return match ? parseInt(match[1].replace(/,/g, ''), 10) : 0;
       };
-      return {
+
+      const res = {
         replies: ex('[data-testid="reply"]'),
         retweets: ex('[data-testid="retweet"], [data-testid="unretweet"]'),
         likes: ex('[data-testid="like"], [data-testid="unlike"]'),
-        bookmarks: ex('[data-testid="bookmark"], [data-testid="removeBookmark"]'),
-        views: ex('a[href$="/analytics"]')
+        views: ex('a[href$="/analytics"]'),
+        bookmarks: ex('[data-testid="bookmark"], [data-testid="removeBookmark"]')
       };
+
+      if (res.bookmarks === 0 && DOM.q('[data-testid="bookmark"], [data-testid="removeBookmark"]', n)) {
+        const group = DOM.q('[data-testid="reply"]', n)?.closest('div[aria-label]');
+        if (group) {
+          const groupNums = (group.getAttribute('aria-label').match(/([\d,]+)/g) || []).map(x => parseInt(x.replace(/,/g, ''), 10));
+          Object.values(res).filter(v => v > 0).forEach(v => {
+            const idx = groupNums.indexOf(v);
+            if (idx > -1) groupNums.splice(idx, 1);
+          });
+          if (groupNums.length === 1) res.bookmarks = groupNums[0];
+        }
+      }
+
+      return res;
     },
     tx: (n) => {
       if (!n) return '';
@@ -252,13 +274,15 @@
         }
 
         const cl = a.cloneNode(true);
+        const qtData = Parser.qt(cl); 
         const u = DOM.q('time', cl)?.closest('a');
+        
         res.push({
           id: u?.href?.split('/').pop() || id, url: u?.href || null,
           context: DOM.q('[data-testid="socialContext"]', cl) ? Parser.tx(DOM.q('[data-testid="socialContext"]', cl)).trim() : null,
           time: DOM.q('time', cl)?.getAttribute('datetime') || null, author: Parser.au(cl),
           content: { text: DOM.q('[data-testid="tweetText"]', cl) ? Parser.tx(DOM.q('[data-testid="tweetText"]', cl)).trim() : null, media: DOM.qa('[data-testid="tweetPhoto"] img', cl).map(img => img.src) },
-          quote: Parser.qt(cl), metrics: Parser.metrics(cl)
+          quote: qtData, metrics: Parser.metrics(cl)
         });
       }
       return res;
