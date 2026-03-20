@@ -2,7 +2,7 @@
 // @name         X (Twitter) Timeline & Thread Archiver
 // @name:zh-CN   X (Twitter) 时间线与帖子归档助手
 // @namespace    https://github.com/miniyu157/x-timeline-archiver
-// @version      v2026.3.20.0
+// @version      v2026.3.20.1
 // @description  Elegant and minimalist timeline & thread archiver for X.
 // @description:zh-CN 优雅极简的 X (Twitter) 时间线与帖子归档工具。
 // @author       Yumeka
@@ -18,6 +18,9 @@
 
 /*
   X (Twitter) Timeline Archiver 更新日志
+      --- v2026.3.20.1 ---
+  * fix: 修复帖子带有引用块时, 解析树越界导致错误吸纳主推文媒体资源的问题
+
       --- v2026.3.20.0 ---
   * refactor: 更新日志弹窗优化
       弃用 <dialog> 元素, 采用 Div 遮罩层
@@ -304,7 +307,12 @@
       const ft = DOM.q('[data-testid="tweetText"]', c), mt = DOM.qa('time', c).pop();
       while (q.parentElement) {
         const p = q.parentElement;
-        if (p.contains(u[0]) || (mt && mt !== DOM.q('time', q) && p.contains(mt)) || (ft && (ft.compareDocumentPosition(u[1]) & 4) && p.contains(ft))) break;
+        if (
+          p.contains(u[0]) ||
+          (mt && mt !== DOM.q('time', q) && p.contains(mt)) ||
+          (ft && (ft.compareDocumentPosition(u[1]) & 4) && p.contains(ft)) ||
+          DOM.qa('[data-testid="tweetPhoto"]', p).some(m => !q.contains(m) && (m.compareDocumentPosition(u[1]) & 4))
+        ) break;
         q = p;
       }
       const d = { author: Parser.au(q), time: DOM.q('time', q)?.getAttribute('datetime') || null, content: { text: Parser.tx(DOM.q('[data-testid="tweetText"]', q)).trim() || null, media: DOM.qa('[data-testid="tweetPhoto"] img', q).map(i => i.src) } };
