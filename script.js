@@ -2,7 +2,7 @@
 // @name         X (Twitter) Timeline & Thread Archiver
 // @name:zh-CN   X (Twitter) 时间线与帖子归档助手
 // @namespace    https://github.com/miniyu157/x-timeline-archiver
-// @version      v2026.3.20.1
+// @version      v2026.3.20.2
 // @description  Elegant and minimalist timeline & thread archiver for X.
 // @description:zh-CN 优雅极简的 X (Twitter) 时间线与帖子归档工具。
 // @author       Yumeka
@@ -18,6 +18,9 @@
 
 /*
   X (Twitter) Timeline Archiver 更新日志
+      --- v2026.3.20.2 ---
+  * feat(ui): 添加菜单展开动画
+
       --- v2026.3.20.1 ---
   * fix: 修复帖子带有引用块时, 解析树越界导致错误吸纳主推文媒体资源的问题
 
@@ -412,7 +415,7 @@
     items: [],
     init() {
       const style = document.createElement("style");
-      style.textContent = `.x-archiver-menu{position:fixed;display:none;flex-direction:column;z-index:9999;background:var(--colors-background,#fff);color:var(--colors-text,#0f1419);border:1px solid var(--colors-border,#eff3f4);border-radius:12px;box-shadow:rgba(101,119,134,0.2) 0 0 15px,rgba(101,119,134,0.15) 0 0 3px 1px;padding:8px 0;min-width:200px;margin:0;list-style:none;font-size:15px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow:hidden}.x-archiver-menu .x-am-action{display:flex;align-items:center;gap:12px;padding:10px 16px;cursor:pointer;transition:background .2s;font-weight:700}.x-archiver-menu .x-am-action:hover{background:rgba(15,20,25,.08)}.x-archiver-menu .x-am-icon{display:flex;align-items:center;justify-content:center;color:#536471;flex-shrink:0;transition:color .2s}.x-archiver-menu .x-am-action:hover .x-am-icon{color:inherit}.x-archiver-menu .x-am-sep{height:1px;background:var(--colors-border,#eff3f4);margin:4px 0}.x-archiver-menu .x-am-toggle{display:flex;align-items:center;padding:4px 12px;margin-bottom:4px;gap:12px}.x-archiver-menu .x-am-toggle-btns{display:flex;flex:1;gap:4px}.x-archiver-menu .x-am-toggle-btn{flex:1;padding:6px 0;text-align:center;font-size:13px;font-weight:700;border-radius:6px;cursor:pointer;transition:all .2s ease;color:#536471}.x-archiver-menu .x-am-toggle-btn:hover{background:rgba(15,20,25,.05)}.x-archiver-menu .x-am-toggle-btn.active{background:#1d9bf0;color:#fff}@media(prefers-color-scheme:dark){.x-archiver-menu{background:#000;border-color:#2f3336;color:#e7e9ea;box-shadow:rgba(255,255,255,0.2) 0 0 15px,rgba(255,255,255,0.15) 0 0 3px 1px}.x-archiver-menu .x-am-action:hover{background:rgba(255,255,255,.08)}.x-archiver-menu .x-am-icon{color:#71767b}.x-archiver-menu .x-am-sep{background:#2f3336}.x-archiver-menu .x-am-toggle-btn{color:#71767b}.x-archiver-menu .x-am-toggle-btn:hover{background:rgba(255,255,255,.05)}.x-archiver-menu .x-am-toggle-btn.active{background:#1d9bf0;color:#fff}}`;
+      style.textContent = `.x-archiver-menu{position:fixed;display:flex;flex-direction:column;z-index:9999;background:var(--colors-background,#fff);color:var(--colors-text,#0f1419);border:1px solid var(--colors-border,#eff3f4);border-radius:12px;box-shadow:rgba(101,119,134,0.2) 0 0 15px,rgba(101,119,134,0.15) 0 0 3px 1px;padding:8px 0;min-width:200px;margin:0;list-style:none;font-size:15px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow:hidden;opacity:0;visibility:hidden;pointer-events:none;transform:scale(0.96) translateY(-8px);transition:opacity .24s cubic-bezier(.22,1,.36,1),transform .24s cubic-bezier(.22,1,.36,1),visibility .24s}.x-archiver-menu.x-am-active{opacity:1;visibility:visible;pointer-events:auto;transform:scale(1) translateY(0)}.x-archiver-menu .x-am-action{display:flex;align-items:center;gap:12px;padding:10px 16px;cursor:pointer;transition:background .2s;font-weight:700}.x-archiver-menu .x-am-action:hover{background:rgba(15,20,25,.08)}.x-archiver-menu .x-am-icon{display:flex;align-items:center;justify-content:center;color:#536471;flex-shrink:0;transition:color .2s}.x-archiver-menu .x-am-action:hover .x-am-icon{color:inherit}.x-archiver-menu .x-am-sep{height:1px;background:var(--colors-border,#eff3f4);margin:4px 0}.x-archiver-menu .x-am-toggle{display:flex;align-items:center;padding:4px 12px;margin-bottom:4px;gap:12px}.x-archiver-menu .x-am-toggle-btns{display:flex;flex:1;gap:4px}.x-archiver-menu .x-am-toggle-btn{flex:1;padding:6px 0;text-align:center;font-size:13px;font-weight:700;border-radius:6px;cursor:pointer;transition:all .2s ease;color:#536471}.x-archiver-menu .x-am-toggle-btn:hover{background:rgba(15,20,25,.05)}.x-archiver-menu .x-am-toggle-btn.active{background:#1d9bf0;color:#fff}@media(prefers-color-scheme:dark){.x-archiver-menu{background:#000;border-color:#2f3336;color:#e7e9ea;box-shadow:rgba(255,255,255,0.2) 0 0 15px,rgba(255,255,255,0.15) 0 0 3px 1px}.x-archiver-menu .x-am-action:hover{background:rgba(255,255,255,.08)}.x-archiver-menu .x-am-icon{color:#71767b}.x-archiver-menu .x-am-sep{background:#2f3336}.x-archiver-menu .x-am-toggle-btn{color:#71767b}.x-archiver-menu .x-am-toggle-btn:hover{background:rgba(255,255,255,.05)}.x-archiver-menu .x-am-toggle-btn.active{background:#1d9bf0;color:#fff}}`;
       document.head.appendChild(style);
 
       this.menu = document.createElement("menu");
@@ -446,9 +449,12 @@
       this.items.forEach(i => i.el.style.display = (i.ctx && i.ctx !== ctx) ? "none" : "");
       const r = t.getBoundingClientRect();
       const leftPos = Math.max(8, r.left - 100);
-      this.menu.style.display = "flex"; this.menu.style.top = `${r.bottom + 8}px`; this.menu.style.left = `${leftPos}px`;
+      this.menu.style.top = `${r.bottom + 8}px`;
+      this.menu.style.left = `${leftPos}px`;
+      this.menu.style.transformOrigin = `${r.left - leftPos + (r.width / 2)}px -8px`;
+      requestAnimationFrame(() => this.menu.classList.add("x-am-active"));
     },
-    hide() { if (this.menu) this.menu.style.display = "none"; }
+    hide() { if (this.menu) this.menu.classList.remove("x-am-active"); }
   };
 
   const Lifecycle = {
