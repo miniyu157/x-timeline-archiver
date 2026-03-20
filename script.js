@@ -2,7 +2,7 @@
 // @name         X (Twitter) Timeline & Thread Archiver
 // @name:zh-CN   X (Twitter) 时间线与帖子归档助手
 // @namespace    https://github.com/miniyu157/x-timeline-archiver
-// @version      v2026.3.19.2
+// @version      v2026.3.20.0
 // @description  Elegant and minimalist timeline & thread archiver for X.
 // @description:zh-CN 优雅极简的 X (Twitter) 时间线与帖子归档工具。
 // @author       Yumeka
@@ -18,6 +18,13 @@
 
 /*
   X (Twitter) Timeline Archiver 更新日志
+      --- v2026.3.20.0 ---
+  * refactor: 更新日志弹窗优化
+      弃用 <dialog> 元素, 采用 Div 遮罩层
+      解决暗色模式显示错误
+      优化 GitHub API 检索, 新增 "加载更多" 的分页控制功能
+      顶部新增当前脚本版本号显示
+
       --- v2026.3.19.2 ---
   * feat: 为菜单项硬编码 SVG 矢量图标, 来源: remixicon.com
   * feat: 新增 Issues 菜单入口
@@ -54,18 +61,18 @@
   * ui: 更换图标样式
 
       --- v2026.3.17.1 ---
-  * feat: 添加导出格式菜单 JSON(L)/CSV；
-  * feat!: 移除 lang 字段；
-  * feat!: nickname 字段由包含昵称+ID, 改为仅包含昵称；
-  * style: 代码风格变得更加紧凑。
+  * feat: 添加导出格式菜单 JSON(L)/CSV
+  * feat!: 移除 lang 字段
+  * feat!: nickname 字段由包含昵称+ID, 改为仅包含昵称
+  * style: 代码风格变得更加紧凑
 
       --- v2026.3.17.0 ---
-  * feat: 新增 Dump Profile Data 功能；
-  * feat: 新增抓取页面的多语言支持；
-  * feat: 下载文件时的友好文件名。
+  * feat: 新增 Dump Profile Data 功能
+  * feat: 新增抓取页面的多语言支持
+  * feat: 下载文件时的友好文件名
 
       --- v2026.3.16.0 ---
-  * init: 初始版本，功能不多，易维护。
+  * init: 初始版本, 功能不多, 易维护
 */
 
 (() => {
@@ -103,60 +110,97 @@
   };
 
   const Changelog = {
-    data: null,
+    data: [],
+    page: 1,
+    hasMore: true,
     fetching: false,
     async request(url) {
       return new Promise((resolve, reject) => {
         GM_xmlhttpRequest({
-          method: "GET",
-          url: url,
+          method: "GET", url,
           onload: (res) => resolve(JSON.parse(res.responseText)),
           onerror: (err) => reject(err)
         });
       });
     },
-    async fetch() {
-      if (this.data) return this.data;
-      if (this.fetching) return [];
+    async fetch(next = false) {
+      if (this.fetching || (!this.hasMore && next)) return;
+      if (next) this.page++;
+      else if (this.data.length) return;
+
       this.fetching = true;
       try {
         const repoPath = CONFIG.repoUrl.replace("https://github.com/", "");
-        const tags = await this.request(`https://api.github.com/repos/${repoPath}/tags?per_page=5`);
+        const tags = await this.request(`https://api.github.com/repos/${repoPath}/tags?per_page=5&page=${this.page}`);
         if (!Array.isArray(tags)) throw new Error(tags.message || "Invalid API response");
-        this.data = await Promise.all(tags.map(async t => {
+        if (tags.length < 5) this.hasMore = false;
+        
+        const entries = await Promise.all(tags.map(async t => {
           const cData = await this.request(t.commit.url);
           return { v: t.name, m: cData.commit.message };
         }));
+        this.data.push(...entries);
       } catch (e) {
         console.error("Archiver: Changelog fetch failed", e);
-        this.data = [{ v: "Error", m: `Failed to fetch changelog.\n${e.message || "Network Error"}` }];
+        if (!this.data.length) this.data = [{ v: "Error", m: `Failed to fetch changelog.\n${e.message || "Network Error"}` }];
+        this.hasMore = false;
       }
       this.fetching = false;
-      return this.data;
     }
   };
 
   const Modal = {
-    el: null,
+    overlay: null,
     init() {
       const style = document.createElement("style");
-      style.textContent = `.x-archiver-modal[open]{display:flex;flex-direction:column;overflow:hidden;padding:0;border:none;border-radius:16px;background:var(--colors-background,#fff);color:var(--colors-text,#0f1419);width:90%;max-width:560px;max-height:80vh;overscroll-behavior:contain;box-shadow:rgba(101,119,134,0.2) 0 0 15px,rgba(101,119,134,0.15) 0 0 3px 1px}.x-archiver-modal::backdrop{background:rgba(0,0,0,0.4);backdrop-filter:blur(4px)}.x-am-header{flex-shrink:0;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--colors-border,#eff3f4);font-size:20px;font-weight:700}.x-am-close{cursor:pointer;background:0 0;border:none;font-size:24px;line-height:1;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:inherit;transition:background .2s}.x-am-close:hover{background:rgba(15,20,25,.1)}.x-am-body{flex:1;padding:20px;overflow-y:auto;font-size:15px;line-height:1.5;white-space:pre-wrap;word-break:break-word}.x-am-item{margin-bottom:24px}.x-am-item:last-child{margin-bottom:0}.x-am-ver{font-size:17px;font-weight:700;color:#1d9bf0;margin-bottom:8px}@media(prefers-color-scheme:dark){.x-archiver-modal{background:#000;color:#e7e9ea;border:1px solid #2f3336;box-shadow:rgba(255,255,255,0.2) 0 0 15px,rgba(255,255,255,0.15) 0 0 3px 1px}.x-am-header{border-bottom-color:#2f3336}.x-am-close:hover{background:rgba(255,255,255,.1)}}`;
+      style.textContent = `.x-am-overlay{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px)}.x-archiver-modal{display:flex;flex-direction:column;overflow:hidden;padding:0;border:none;border-radius:16px;background:var(--colors-background,#fff);color:var(--colors-text,#0f1419);width:90%;max-width:560px;max-height:80vh;overscroll-behavior:contain;box-shadow:rgba(101,119,134,0.2) 0 0 15px,rgba(101,119,134,0.15) 0 0 3px 1px}.x-am-header{flex-shrink:0;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--colors-border,#eff3f4);font-size:20px;font-weight:700}.x-am-version{font-size:13px;font-weight:400;color:#71767b;margin-left:8px}.x-am-close{cursor:pointer;background:0 0;border:none;font-size:24px;line-height:1;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:inherit;transition:background .2s}.x-am-close:hover{background:rgba(15,20,25,.1)}.x-am-body{flex:1;padding:20px;overflow-y:auto;font-size:15px;line-height:1.5;white-space:pre-wrap;word-break:break-word}.x-am-item{margin-bottom:24px}.x-am-item:last-child{margin-bottom:0}.x-am-ver{font-size:17px;font-weight:700;color:#1d9bf0;margin-bottom:8px}.x-am-more{display:block;text-align:center;color:#1d9bf0;font-size:14px;cursor:pointer;margin-top:16px;padding-bottom:8px;user-select:none}.x-am-more:hover{text-decoration:underline}@media(prefers-color-scheme:dark){.x-archiver-modal{background:#000;color:#e7e9ea;border:1px solid #2f3336;box-shadow:rgba(255,255,255,0.2) 0 0 15px,rgba(255,255,255,0.15) 0 0 3px 1px}.x-am-header{border-color:#2f3336}.x-am-close:hover{background:rgba(255,255,255,.1)}}`;
       document.head.appendChild(style);
-      this.el = document.createElement("dialog");
-      this.el.className = "x-archiver-modal";
-      this.el.innerHTML = `<div class="x-am-header"><span>Changelog</span><button class="x-am-close">&times;</button></div><div class="x-am-body"></div>`;
-      document.body.appendChild(this.el);
-      DOM.q(".x-am-close", this.el).onclick = () => this.el.close();
-      this.el.onclick = e => { if (e.target === this.el) this.el.close(); };
+      
+      this.overlay = document.createElement("div");
+      this.overlay.className = "x-am-overlay";
+      
+      const cv = typeof GM_info !== "undefined" ? GM_info.script.version : "Unknown";
+      const displayVer = cv.startsWith('v') ? cv : `v${cv}`;
+      
+      this.overlay.innerHTML = `<div class="x-archiver-modal"><div class="x-am-header"><div>Changelog<span class="x-am-version">${displayVer}</span></div><button class="x-am-close">&times;</button></div><div class="x-am-body"></div></div>`;
+      document.body.appendChild(this.overlay);
+      
+      DOM.q(".x-am-close", this.overlay).onclick = () => this.close();
+      this.overlay.onclick = e => { if (e.target === this.overlay) this.close(); };
+    },
+    render() {
+      const b = DOM.q(".x-am-body", this.overlay);
+      let html = Changelog.data.length ? Changelog.data.map(x => `<div class="x-am-item"><div class="x-am-ver">${x.v}</div><div>${x.m.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div></div>`).join("") : "Loading...";
+      
+      if ((Changelog.hasMore || Changelog.fetching) && Changelog.data.length) {
+        html += `<div class="x-am-more" id="x-am-load-more">${Changelog.fetching ? 'Loading...' : 'Load More'}</div>`;
+      }
+      
+      b.innerHTML = html;
+      
+      const moreBtn = DOM.q("#x-am-load-more", b);
+      if (moreBtn && !Changelog.fetching) {
+        moreBtn.onclick = () => this.loadMore();
+      }
     },
     async open() {
-      if (!this.el) this.init();
-      this.el.showModal();
-      const b = DOM.q(".x-am-body", this.el);
-      if (b.innerHTML && b.innerHTML !== "Loading...") return;
-      b.innerHTML = "Loading...";
-      const d = await Changelog.fetch();
-      b.innerHTML = d.map(x => `<div class="x-am-item"><div class="x-am-ver">${x.v}</div><div>${x.m.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div></div>`).join("");
+      if (!this.overlay) this.init();
+      this.overlay.style.display = "flex";
+      document.body.style.overflow = "hidden";
+      if (!Changelog.data.length) {
+        this.render();
+        await Changelog.fetch();
+      }
+      this.render();
+    },
+    close() {
+      if (this.overlay) this.overlay.style.display = "none";
+      document.body.style.overflow = "";
+    },
+    async loadMore() {
+      this.render();
+      await Changelog.fetch(true);
+      this.render();
     }
   };
 
@@ -280,10 +324,8 @@
 
       for (const c of DOM.qa('[data-testid="cellInnerDiv"]', col)) {
         if (mode === 'thread' && DOM.q('h2', c) && !DOM.q('article', c)) break;
-
         const a = DOM.q('article[data-testid="tweet"]', c);
         if (!a) continue;
-
         if (mode === 'thread' && fnode && (fnode.compareDocumentPosition(a) & 2)) continue;
 
         const id = DOM.q('time', a)?.closest('a')?.href?.split('/').pop() || null;
