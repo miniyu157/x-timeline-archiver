@@ -81,6 +81,24 @@ options:
 
     支持使用 -f 指定输出格式，默认为 `{name}({handle}) {text}`
 
+3. 时间线 JSONL：把每一行作为独立帖子节点读取，适合处理本脚本的时间线
+   JSON(L) 导出
+
+    ```console
+    ./twtree.py --timeline timeline.jsonl -t txt
+    ```
+
+4. Xquik 导出：把 Xquik JSON 或 JSONL 行归一化为本项目的数据结构，再输出
+   JSON 或 TXT
+
+    ```console
+    ./twtree.py --xquik xquik-export.jsonl -t txt -f "{time} @{handle}: {text}"
+    ```
+
+    `--xquik` 会读取常见的 `tweetId`、`text`、`createdAt`、作者、媒体与互动
+    指标字段，并把 `twitter.com` 链接规范化为 `x.com` 链接。若导出中包含
+    `parent_id`、`parentId` 或 `in_reply_to_status_id`，脚本会据此恢复回复树。
+
 **数据结构示例 (JSON):**
 
 > [!NOTE]
